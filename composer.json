@@ -1,0 +1,32 @@
+{
+    "name": "abdullyahuza/filament-impersonate",
+    "description": "Filament Impersonate allows administrators to securely impersonate other users within the Filament admin panel. With a simple \"Impersonate\" action on user records, admins can log in as another user to troubleshoot issues, test permissions, or preview user-specific content. A visible banner indicates impersonation mode, with an easy one-click return to the original account.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Abdullyahuza\\FilamentImpersonate\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "abdullyahuza",
+            "email": "yahuzaabdulrazak@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "filament/filament": "^3.0",
+        "illuminate/support": "^10.0 || ^11.0"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Abdullyahuza\\FilamentImpersonate\\FilamentImpersonateServiceProvider"
+            ]
+        }
+    }
+
+}

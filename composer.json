@@ -1,6 +1,6 @@
 {
     "name": "abdullyahuza/filament-impersonate",
-    "description": "Filament Impersonate allows administrators to securely impersonate other users within the Filament admin panel. With a simple \"Impersonate\" action on user records, admins can log in as another user to troubleshoot issues, test permissions, or preview user-specific content. A visible banner indicates impersonation mode, with an easy one-click return to the original account.",
+    "description": "Filament Impersonate allows administrators to securely impersonate other users within the Filament admin panel. With a simple \"Impersonate\" action, admins can log in as another user to troubleshoot issues, test permissions, or preview user-specific content. A visible banner indicates impersonation mode, with an easy one-click return to the original account.",
     "type": "library",
     "license": "MIT",
     "autoload": {

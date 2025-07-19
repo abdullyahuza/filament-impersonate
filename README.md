@@ -117,4 +117,4 @@ Ensure your environment is included in `allowed_environments` for local testing.
 ---
 
 ## 📄 License
-MIT# filament-impersonate
+MIT

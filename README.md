@@ -7,7 +7,7 @@ A plugin for [Filament Admin Panel](https://filamentphp.com/) that allows author
 ## 📦 Installation
 
 ```bash
-composer require your-vendor/filament-impersonate
+composer require abdullyahuza/filament-impersonate
 ```
 
 Optionally publish the config file:

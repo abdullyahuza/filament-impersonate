@@ -1,3 +1,5 @@
+![DEMO UI](resources/github/shots/demo_ui.png)
+
 # 🎭 Filament Impersonate
 
 A plugin for [Filament Admin Panel](https://filamentphp.com/) that allows authorized users to impersonate other users.

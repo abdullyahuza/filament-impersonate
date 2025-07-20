@@ -2,6 +2,8 @@
 
 # 🎭 Filament Impersonate
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A plugin for [Filament Admin Panel](https://filamentphp.com/) that allows authorized users to impersonate other users.
 
 ---
@@ -120,4 +122,4 @@ Ensure your environment is included in `allowed_environments` for local testing.
 
 ## 📄 License
 
-The MIT License (MIT). Please see [License File](LINCENSE) for more information.
+The MIT License (MIT). Please see [License File](LICENSE) for more information.

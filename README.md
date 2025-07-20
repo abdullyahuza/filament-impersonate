@@ -119,4 +119,5 @@ Ensure your environment is included in `allowed_environments` for local testing.
 ---
 
 ## 📄 License
-MIT
+
+The MIT License (MIT). Please see [License File](LINCENSE) for more information.

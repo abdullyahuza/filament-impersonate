@@ -1,4 +1,4 @@
-![DEMO UI](resources/github/shots/demo_ui.png)
+![DEMO UI](resources/github/shots/ui.png)
 
 # 🎭 Filament Impersonate
 

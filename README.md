@@ -60,7 +60,6 @@ return [
 ->middleware([
 	...
 	// AuthenticateSession::class,
-	ImpersonateSessionMiddleware::class,
 ])
 ```
 ---

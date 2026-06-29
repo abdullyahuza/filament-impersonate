@@ -240,8 +240,13 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
      * Determines the best tenant to redirect to after a user switch.
      *
      * If $user can access the current tenant, keep it (same-school case).
-     * Otherwise, fall back to the first tenant the user actually belongs to.
-     * This ensures cross-school impersonation lands on a panel the user can open.
+     * Otherwise fall back to the first tenant the user actually belongs to.
+     *
+     * NOTE: we intentionally avoid using getTenants() / BelongsToMany here because
+     * the pivot table may have its own `id` column that overwrites the related
+     * model's primary key during hydration, producing an empty route key and a 404.
+     * Instead we query the tenants() relationship as a fresh Eloquent query so only
+     * the related model's own columns are returned.
      */
     protected function resolveEffectiveTenant(?Model $user, $currentTenant)
     {
@@ -249,20 +254,38 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
             return $currentTenant;
         }
 
-        // User already has access to the current school — no change needed
+        // User already has access to the current tenant — keep it
         if (method_exists($user, 'canAccessTenant') && $user->canAccessTenant($currentTenant)) {
             return $currentTenant;
         }
 
-        // User does not belong to the current school — find their own
-        if (method_exists($user, 'getTenants')) {
-            $panel = \Filament\Facades\Filament::getCurrentPanel()
-                ?? \Filament\Facades\Filament::getDefaultPanel();
+        // User doesn't belong to the current tenant — find their first available tenant.
+        // Try each common relationship name; use ->getRelated()->newModelQuery() so we
+        // bypass the pivot's id-column conflict by selecting only the related table.
+        foreach (['schools', 'tenants', 'organizations', 'teams', 'companies'] as $relation) {
+            if (! method_exists($user, $relation)) {
+                continue;
+            }
 
-            $firstTenant = $user->getTenants($panel)?->first();
+            try {
+                $relation   = $user->$relation();
+                $relatedKey = $relation->getRelated()->getKeyName();
+                $relatedTbl = $relation->getRelated()->getTable();
 
-            if ($firstTenant) {
-                return $firstTenant;
+                // Select ONLY the related table's columns to avoid pivot id conflicts
+                $firstTenant = $relation
+                    ->select("{$relatedTbl}.*")
+                    ->first();
+
+                if ($firstTenant && $firstTenant->getKey()) {
+                    // Reload via a direct find so the model is fully, cleanly hydrated
+                    $clean = $firstTenant->newModelQuery()->find($firstTenant->getKey());
+                    if ($clean) {
+                        return $clean;
+                    }
+                }
+            } catch (\Throwable) {
+                continue;
             }
         }
 

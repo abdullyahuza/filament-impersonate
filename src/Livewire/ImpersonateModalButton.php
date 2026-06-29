@@ -199,19 +199,23 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
         return null;
     }
 
-    protected function impersonate(Model $targetUser): mixed
+    protected function impersonate(Model $targetUser): void
     {
         $currentTenant   = \Filament\Facades\Filament::getTenant();
         Auth::loginUsingId($targetUser->id);
 
-        // After switching identity, find the tenant the target user can actually access.
-        // If they don't belong to the current school, fall back to their own school.
+        // Find the tenant the target user can actually access.
+        // Falls back to their own tenant if they don't belong to the current one.
         $effectiveTenant = $this->resolveEffectiveTenant($targetUser, $currentTenant);
+        $url             = $this->resolveRedirect($targetUser, $effectiveTenant);
 
-        return redirect($this->resolveRedirect($targetUser, $effectiveTenant));
+        // Force a hard page reload (navigate: false) so the full middleware chain
+        // re-runs for the new tenant. SPA/partial navigation does not reinitialise
+        // tenant resolution, Shield sync, or session middleware correctly.
+        $this->redirect($url, navigate: false);
     }
 
-    protected function stopImpersonation(): mixed
+    protected function stopImpersonation(): void
     {
         $originalId   = session(config('filament-impersonate.session_key', 'filament_impersonator_id'));
         $originalUser = $originalId
@@ -227,8 +231,9 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
         $currentTenant   = \Filament\Facades\Filament::getTenant();
         $redirectUser    = $originalUser ?? auth()->user();
         $effectiveTenant = $this->resolveEffectiveTenant($redirectUser, $currentTenant);
+        $url             = $this->resolveRedirect($redirectUser, $effectiveTenant);
 
-        return redirect($this->resolveRedirect($redirectUser, $effectiveTenant));
+        $this->redirect($url, navigate: false);
     }
 
     /**

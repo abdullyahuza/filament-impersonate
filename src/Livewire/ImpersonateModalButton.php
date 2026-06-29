@@ -201,9 +201,14 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
 
     protected function impersonate(Model $targetUser): mixed
     {
-        $tenant = \Filament\Facades\Filament::getTenant();
+        $currentTenant   = \Filament\Facades\Filament::getTenant();
         Auth::loginUsingId($targetUser->id);
-        return redirect($this->resolveRedirect($targetUser, $tenant));
+
+        // After switching identity, find the tenant the target user can actually access.
+        // If they don't belong to the current school, fall back to their own school.
+        $effectiveTenant = $this->resolveEffectiveTenant($targetUser, $currentTenant);
+
+        return redirect($this->resolveRedirect($targetUser, $effectiveTenant));
     }
 
     protected function stopImpersonation(): mixed
@@ -219,8 +224,44 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
             Auth::logout();
         }
 
-        $tenant = \Filament\Facades\Filament::getTenant();
-        return redirect($this->resolveRedirect($originalUser ?? auth()->user(), $tenant));
+        $currentTenant   = \Filament\Facades\Filament::getTenant();
+        $redirectUser    = $originalUser ?? auth()->user();
+        $effectiveTenant = $this->resolveEffectiveTenant($redirectUser, $currentTenant);
+
+        return redirect($this->resolveRedirect($redirectUser, $effectiveTenant));
+    }
+
+    /**
+     * Determines the best tenant to redirect to after a user switch.
+     *
+     * If $user can access the current tenant, keep it (same-school case).
+     * Otherwise, fall back to the first tenant the user actually belongs to.
+     * This ensures cross-school impersonation lands on a panel the user can open.
+     */
+    protected function resolveEffectiveTenant(?Model $user, $currentTenant)
+    {
+        if (! $currentTenant || ! $user) {
+            return $currentTenant;
+        }
+
+        // User already has access to the current school — no change needed
+        if (method_exists($user, 'canAccessTenant') && $user->canAccessTenant($currentTenant)) {
+            return $currentTenant;
+        }
+
+        // User does not belong to the current school — find their own
+        if (method_exists($user, 'getTenants')) {
+            $panel = \Filament\Facades\Filament::getCurrentPanel()
+                ?? \Filament\Facades\Filament::getDefaultPanel();
+
+            $firstTenant = $user->getTenants($panel)?->first();
+
+            if ($firstTenant) {
+                return $firstTenant;
+            }
+        }
+
+        return $currentTenant; // last-resort fallback
     }
 
     protected function resolveRedirect(?Model $user, $tenant): string

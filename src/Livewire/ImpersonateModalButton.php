@@ -10,6 +10,7 @@ use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\Tabs\Tab;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Get;
 use Filament\Support\Enums\ActionSize;
 use Filament\Support\Enums\IconPosition;
 use Filament\Support\Enums\MaxWidth;
@@ -32,7 +33,7 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
     public function SwitchAction(): Action
     {
         $impersonatorId = session(config('filament-impersonate.session_key', 'filament_impersonator_id'));
-        $originalUser   = isImpersonating() ? ($this->getUserModel())::find($impersonatorId) : null;
+        $originalUser   = isImpersonating() ? ($this->getUserModel())::withoutGlobalScopes()->find($impersonatorId) : null;
         $userName       = filamentImpersonateDisplayName(auth()->user());
         $roleNames      = auth()->user()->getRoleNames()->implode(', ');
 
@@ -68,18 +69,18 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
             ->visible(filamentImpersonateEnabled())
             ->form([
                 Tabs::make('Impersonation Type')->tabs([
+
+                    // ── Tab 1: Pick a specific user ───────────────────────────
                     Tab::make('User')->icon('heroicon-m-user')->schema([
                         Select::make('user_id')
                             ->label('Select User')
                             ->options(function () {
-                                // Resolve excluded_user_ids — supports both array and callable
                                 $excluded = config('filament-impersonate.excluded_user_ids', []);
                                 if (is_callable($excluded)) {
                                     $excluded = $excluded();
                                 }
 
                                 // withoutGlobalScopes() bypasses any tenant/school scoping
-                                // on the user model so all users in the system are listed
                                 return ($this->getUserModel())::withoutGlobalScopes()
                                     ->where('id', '!=', auth()->id())
                                     ->whereNotIn('id', $excluded)
@@ -89,20 +90,81 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
                             })
                             ->searchable(),
                     ]),
+
+                    // ── Tab 2: Pick a role → then pick a user with that role ──
                     Tab::make('Role')->icon('heroicon-m-shield-check')->schema([
-                        Select::make('role_ids')
+                        Select::make('role_id')
                             ->label('Select Role')
-                            ->options(Role::pluck('name', 'id'))
+                            ->options(function () {
+                                // Spatie respects setPermissionsTeamId() automatically,
+                                // so this is tenant-scoped when in a school panel
+                                return Role::orderBy('name')->pluck('name', 'id');
+                            })
                             ->searchable()
-                            ->multiple(),
-                    ])->visible(false),
-                    Tab::make('Permission')->icon('heroicon-m-lock-open')->schema([
-                        Select::make('permission_ids')
-                            ->label('Select Permission')
-                            ->options(Permission::pluck('name', 'id'))
-                            ->multiple()
+                            ->live()
+                            ->placeholder('Choose a role…'),
+
+                        Select::make('user_id_for_role')
+                            ->label('Select User')
+                            ->placeholder('Choose a user with this role…')
+                            ->visible(fn (Get $get) => ! empty($get('role_id')))
+                            ->options(function (Get $get) {
+                                $roleId = $get('role_id');
+                                if (! $roleId) {
+                                    return [];
+                                }
+
+                                $excluded = config('filament-impersonate.excluded_user_ids', []);
+                                if (is_callable($excluded)) {
+                                    $excluded = $excluded();
+                                }
+
+                                return ($this->getUserModel())::withoutGlobalScopes()
+                                    ->where('id', '!=', auth()->id())
+                                    ->whereNotIn('id', $excluded)
+                                    ->whereNull('deleted_at')
+                                    ->whereHas('roles', fn ($q) => $q->where('roles.id', $roleId))
+                                    ->get()
+                                    ->mapWithKeys(fn ($user) => [$user->id => filamentImpersonateDisplayName($user)]);
+                            })
                             ->searchable(),
-                    ])->visible(false),
+                    ])->visible(config('filament-impersonate.enable_role_tab', false)),
+
+                    // ── Tab 3: Pick by permission ─────────────────────────────
+                    Tab::make('Permission')->icon('heroicon-m-lock-open')->schema([
+                        Select::make('permission_id')
+                            ->label('Select Permission')
+                            ->options(Permission::orderBy('name')->pluck('name', 'id'))
+                            ->searchable()
+                            ->live()
+                            ->placeholder('Choose a permission…'),
+
+                        Select::make('user_id_for_permission')
+                            ->label('Select User')
+                            ->placeholder('Choose a user with this permission…')
+                            ->visible(fn (Get $get) => ! empty($get('permission_id')))
+                            ->options(function (Get $get) {
+                                $permId = $get('permission_id');
+                                if (! $permId) {
+                                    return [];
+                                }
+
+                                $excluded = config('filament-impersonate.excluded_user_ids', []);
+                                if (is_callable($excluded)) {
+                                    $excluded = $excluded();
+                                }
+
+                                return ($this->getUserModel())::withoutGlobalScopes()
+                                    ->where('id', '!=', auth()->id())
+                                    ->whereNotIn('id', $excluded)
+                                    ->whereNull('deleted_at')
+                                    ->whereHas('permissions', fn ($q) => $q->where('permissions.id', $permId))
+                                    ->get()
+                                    ->mapWithKeys(fn ($user) => [$user->id => filamentImpersonateDisplayName($user)]);
+                            })
+                            ->searchable(),
+                    ])->visible(config('filament-impersonate.enable_permission_tab', false)),
+
                 ]),
             ])
             ->action(fn (array $data) => $this->handleImpersonation($data));
@@ -119,26 +181,19 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
 
     protected function findTargetUser(array $data): ?Model
     {
+        // Direct user selection
         if (! empty($data['user_id'])) {
             return ($this->getUserModel())::withoutGlobalScopes()->find($data['user_id']);
         }
 
-        if (! empty($data['role_ids'])) {
-            return ($this->getUserModel())::withoutGlobalScopes()
-                ->where('id', '!=', auth()->id())
-                ->whereHas('roles', fn ($q) => $q->whereIn('id', $data['role_ids']))
-                ->withCount(['roles as matching_roles_count' => fn ($q) => $q->whereIn('id', $data['role_ids'])])
-                ->having('matching_roles_count', count($data['role_ids']))
-                ->first();
+        // Role tab: user was explicitly chosen after filtering by role
+        if (! empty($data['user_id_for_role'])) {
+            return ($this->getUserModel())::withoutGlobalScopes()->find($data['user_id_for_role']);
         }
 
-        if (! empty($data['permission_ids'])) {
-            return ($this->getUserModel())::withoutGlobalScopes()
-                ->where('id', '!=', auth()->id())
-                ->whereHas('permissions', fn ($q) => $q->whereIn('id', $data['permission_ids']))
-                ->withCount(['permissions as matching_permissions_count' => fn ($q) => $q->whereIn('id', $data['permission_ids'])])
-                ->having('matching_permissions_count', count($data['permission_ids']))
-                ->first();
+        // Permission tab: user was explicitly chosen after filtering by permission
+        if (! empty($data['user_id_for_permission'])) {
+            return ($this->getUserModel())::withoutGlobalScopes()->find($data['user_id_for_permission']);
         }
 
         return null;
@@ -176,7 +231,6 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
             return $config($user, $tenant);
         }
 
-        // Fallback: try as a named route, then treat as a plain URL
         try {
             return route($config);
         } catch (\Exception) {

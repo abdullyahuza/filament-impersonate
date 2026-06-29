@@ -201,17 +201,20 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
 
     protected function impersonate(Model $targetUser): void
     {
-        $currentTenant   = \Filament\Facades\Filament::getTenant();
-        Auth::loginUsingId($targetUser->id);
+        $currentTenant = \Filament\Facades\Filament::getTenant();
 
-        // Find the tenant the target user can actually access.
-        // Falls back to their own tenant if they don't belong to the current one.
+        // Auth::login() writes the new user to the session so the next request
+        // (the redirect) authenticates as the impersonated user.
+        // Auth::loginUsingId() only switches the user in memory for the current
+        // request and does NOT update the session, so the redirect would still
+        // see the original user and abort(404) on canAccessTenant() checks.
+        Auth::login($targetUser);
+
         $effectiveTenant = $this->resolveEffectiveTenant($targetUser, $currentTenant);
         $url             = $this->resolveRedirect($targetUser, $effectiveTenant);
 
-        // Force a hard page reload (navigate: false) so the full middleware chain
-        // re-runs for the new tenant. SPA/partial navigation does not reinitialise
-        // tenant resolution, Shield sync, or session middleware correctly.
+        // navigate: false forces a full HTTP request so the entire middleware
+        // chain (IdentifyTenant, SyncShieldTenant, etc.) re-runs correctly.
         $this->redirect($url, navigate: false);
     }
 
@@ -223,7 +226,7 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
             : null;
 
         if ($originalUser) {
-            Auth::loginUsingId($originalUser->id);
+            Auth::login($originalUser);
         } else {
             Auth::logout();
         }
@@ -269,7 +272,6 @@ class ImpersonateModalButton extends Component implements HasForms, HasActions
 
             try {
                 $relation   = $user->$relation();
-                $relatedKey = $relation->getRelated()->getKeyName();
                 $relatedTbl = $relation->getRelated()->getTable();
 
                 // Select ONLY the related table's columns to avoid pivot id conflicts
